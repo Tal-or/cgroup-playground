@@ -1,0 +1,13 @@
+{
+  "version": "1.0.0",
+  "when": {
+    "annotations": {
+      "cpu-shared-container.crio.io": "sharedcontainer"
+    }
+  },
+  "hook": {
+    "path": "/usr/local/bin/cgroups-modifier.sh",
+    "args": ["cgroups-modifier.sh", "sharedcontainer"]
+  },
+  "stages": ["poststart"]
+}
