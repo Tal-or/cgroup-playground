@@ -1,18 +1,18 @@
 #!/usr/bin/env bash
 
 JQ="/usr/bin/jq"
+CGROUPS_GU_POD_PATH="/sys/fs/cgroup/cpuset/kubepods.slice"
 
 # The state of the container MUST be passed to hooks over stdin
 # so that they may do work appropriate to the current state of the container.
 # https://github.com/opencontainers/runtime-spec/blob/main/runtime.md#state
 state=$(${JQ} -r '.' /dev/stdin 2>&1)
-
 shared_cnt=$(${JQ} -r '.annotations["cpu-shared-container.crio.io"]' <<< "${state}")
 bundle=$(${JQ} -r '.bundle' <<< "${state}")
-pod_cgroup=$(${JQ} '.linux.cgroupsPath' < ${bundle}/config.json)
+pod_cgroups=$(${JQ} -r '.linux.cgroupsPath' < ${bundle}/config.json)
 
 # make sure it's a guaranteed pod
-if [[ ${pod_cgroup} =~ .*burstable.* ]] || [[ ${pod_cgroup} =~ .*besteffort.* ]]; then
+if [[ ${pod_cgroups} =~ .*burstable.* ]] || [[ ${pod_cgroups} =~ .*besteffort.* ]]; then
     logger "pod $(${JQ} -r .hostname < "${bundle}"/config.json) is not guaranteed"
     exit 0
 fi
@@ -27,7 +27,7 @@ for cnt in /run/runc/*; do
 done
 
 if [[ -z "$shared_cpuset" ]]; then
-  logger "cpuset for container $shared_cnt is empty"
+  logger "cpuset of shared container $shared_cnt is empty"
   exit 0
 fi
 
@@ -49,19 +49,6 @@ for cpu in "${shared_cpulist[@]}"; do
   cpuset+=",${cpu}"
 done
 
-logger "updated cpuset ${cpuset}"
-
-tmpf=$(mktemp)
-
-# update the bundle file and redirect to temp file
-${JQ} --arg cpuset "${cpuset}"  '.linux.resources.cpu.cpus = $cpuset'  < "${bundle}"/config.json > "${tmpf}"
-
-logger -S 500KiB "tmpf: $(cat ${tmpf})"
-# override the original config with the changes
-mv -fv "${tmpf}" "${bundle}"/config.json
-
-
-logger -S 500KiB "bundle/config.json after: $(cat ${bundle}/config.json)"
-
-logger "new cpuset_cpus for container $(${JQ} '.linux.resources.cpu.cpus' < "${bundle}"/config.json)"
-
+IFS=':' read -ra cgroups_path <<< "${pod_cgroups}"
+echo "${cpuset}" > "${CGROUPS_GU_POD_PATH}"/"${cgroups_path[0]}"/"${cgroups_path[1]}"-"${cgroups_path[2]}".scope/cpuset.cpus
+logger "updated cpuset in cgroups: $(cat "${CGROUPS_GU_POD_PATH}"/"${cgroups_path[0]}"/"${cgroups_path[1]}"-"${cgroups_path[2]}".scope/cpuset.cpus)"
