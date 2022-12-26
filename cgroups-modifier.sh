@@ -52,3 +52,7 @@ done
 IFS=':' read -ra cgroups_path <<< "${pod_cgroups}"
 echo "${cpuset}" > "${CGROUPS_GU_POD_PATH}"/"${cgroups_path[0]}"/"${cgroups_path[1]}"-"${cgroups_path[2]}".scope/cpuset.cpus
 logger "updated cpuset in cgroups: $(cat "${CGROUPS_GU_POD_PATH}"/"${cgroups_path[0]}"/"${cgroups_path[1]}"-"${cgroups_path[2]}".scope/cpuset.cpus)"
+
+env_path=$(${JQ} -r '.mounts[] |  select(.destination == "/run/.containerenv") | .source' < "${bundle}/config.json")
+# inject the shared CPUs via environment variable
+echo "SHARED_CPUS=${shared_cpuset}" >> "${env_path}"
